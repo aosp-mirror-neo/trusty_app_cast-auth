@@ -1,7 +1,5 @@
 #include "BnCastAuth.h"
 #include <cassert>
-#define TLOG_TAG "BnCastAuth"
-#include <trusty_log.h>
 
 namespace aidl {
 struct __PACKED Request {
@@ -139,8 +137,6 @@ int BnCastAuth::on_message(const ::trusty::aidl::ipc::Service::Port *port,
     Request_SignHash req;
     constexpr uint32_t min_msg_len = sizeof(req_hdr) + sizeof(req);
     if (mi.len < min_msg_len) {
-      TLOGE("CMD_SignHash NOT_ENOUGH_DATA len(%lu) != min(%u)\n", mi.len,
-            min_msg_len);
       rc = ::android::NOT_ENOUGH_DATA;
       goto send_rc;
     }
