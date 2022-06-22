@@ -207,8 +207,8 @@ void keybox_wrap_for_test(const uint8_t *keybox_plaintext,
 
 TEST(CastAuthTest, ProvisionAndSignHash) {
   int rc;
-  std::optional<aidl::BpCastAuth> cast_auth;
-  rc = aidl::BpCastAuth::connect(cast_auth, aidl::ICastAuth::PORT,
+  BpCastAuth cast_auth;
+  rc = cast_auth.connect(ICastAuth::PORT,
                                  IPC_CONNECT_WAIT_FOR_PORT);
   ASSERT_EQ(NO_ERROR, rc, "connect");
 
@@ -217,16 +217,16 @@ TEST(CastAuthTest, ProvisionAndSignHash) {
   keybox_wrap_for_test(test_pkcs1_der, sizeof(test_pkcs1_der), wrapped_keybox,
                        sizeof(wrapped_keybox), &wrapped_keybox_len);
   {
-    ::trusty::aidl::Payload prov_req(wrapped_keybox, wrapped_keybox_len);
-    rc = cast_auth->ProvisionKey(prov_req);
+    ::tidl::Payload prov_req(wrapped_keybox, wrapped_keybox_len);
+    rc = cast_auth.ProvisionKey(prov_req);
     ASSERT_EQ(NO_ERROR, rc, "ProvisionKey");
   }
 
   {
-    ::trusty::aidl::Payload sign_req(test_hash, sizeof(test_hash));
+    ::tidl::Payload sign_req(test_hash, sizeof(test_hash));
     uint8_t signature[256];
-    ::trusty::aidl::Payload sign_resp(signature, sizeof(signature));
-    rc = cast_auth->SignHash(sign_req, &sign_resp);
+    ::tidl::Payload sign_resp(signature, sizeof(signature));
+    rc = cast_auth.SignHash(sign_req, &sign_resp);
     ASSERT_EQ(NO_ERROR, rc, "SignHash");
     ASSERT_EQ(sign_resp.size(), sizeof(test_signature), "signature size");
     for (unsigned int i = 0; i < sign_resp.size(); ++i) {
@@ -239,22 +239,22 @@ test_abort:;
 
 TEST(CastAuthTest, ProvisionUnwrappedAndSignHash) {
   int rc;
-  std::optional<aidl::BpCastAuth> cast_auth;
-  rc = aidl::BpCastAuth::connect(cast_auth, aidl::ICastAuth::PORT,
+  BpCastAuth cast_auth;
+  rc = cast_auth.connect(ICastAuth::PORT,
                                  IPC_CONNECT_WAIT_FOR_PORT);
   ASSERT_EQ(NO_ERROR, rc, "connect");
 
   {
-    ::trusty::aidl::Payload prov_req(test_pkcs1_der, sizeof(test_pkcs1_der));
-    rc = cast_auth->ProvisionKey(prov_req);
+    ::tidl::Payload prov_req(test_pkcs1_der, sizeof(test_pkcs1_der));
+    rc = cast_auth.ProvisionKey(prov_req);
     ASSERT_EQ(NO_ERROR, rc, "ProvisionKey");
   }
 
   {
-    ::trusty::aidl::Payload sign_req(test_hash, sizeof(test_hash));
+    ::tidl::Payload sign_req(test_hash, sizeof(test_hash));
     uint8_t signature[256];
-    ::trusty::aidl::Payload sign_resp(signature, sizeof(signature));
-    rc = cast_auth->SignHash(sign_req, &sign_resp);
+    ::tidl::Payload sign_resp(signature, sizeof(signature));
+    rc = cast_auth.SignHash(sign_req, &sign_resp);
     ASSERT_EQ(NO_ERROR, rc, "SignHash");
     ASSERT_EQ(sign_resp.size(), sizeof(test_signature), "signature size");
     for (unsigned int i = 0; i < sign_resp.size(); ++i) {

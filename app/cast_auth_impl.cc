@@ -22,7 +22,7 @@ const int WRAPPED_KEY_MAX_BYTES = UNWRAPPED_KEY_MAX_BYTES + WRAPPING_MAX_BYTES;
 const int PAYLOAD_MAX_BYTES = WRAPPED_KEY_MAX_BYTES;
 
 bool is_plaintext_rsa_2048_private_key(
-    const ::trusty::aidl::Payload &req_payload) {
+    const ::tidl::Payload &req_payload) {
   bssl::UniquePtr<BIO> bio(
       BIO_new_mem_buf(req_payload.data(), req_payload.size()));
   if (!bio) {
@@ -55,7 +55,7 @@ private:
 
 CastAuthImpl::CastAuthImpl() : BnCastAuth(PORT, &kAcl, PAYLOAD_MAX_BYTES) {}
 
-int CastAuthImpl::ProvisionKey(const ::trusty::aidl::Payload &req_payload) {
+int CastAuthImpl::ProvisionKey(const ::tidl::Payload &req_payload) {
   uint8_t unwrapped[UNWRAPPED_KEY_MAX_BYTES];
   size_t unwrapped_size = sizeof(unwrapped);
   if (!system_state_provisioning_allowed()) {
@@ -92,8 +92,8 @@ int CastAuthImpl::ProvisionKey(const ::trusty::aidl::Payload &req_payload) {
   return SaveKey(unwrapped, unwrapped_size);
 }
 
-int CastAuthImpl::SignHash(const ::trusty::aidl::Payload &req_payload,
-                           ::trusty::aidl::Payload *resp_payload) {
+int CastAuthImpl::SignHash(const ::tidl::Payload &req_payload,
+                           ::tidl::Payload *resp_payload) {
   uint8_t key[UNWRAPPED_KEY_MAX_BYTES];
   size_t key_size = sizeof(key);
   int rc = LoadKey(key, &key_size);
@@ -209,18 +209,18 @@ int CastAuthImpl::LoadKey(uint8_t *key, size_t *length) {
   return NO_ERROR;
 }
 
-int CastAuthImpl::get_payload_buffer(::trusty::aidl::Payload &payload,
+int CastAuthImpl::get_payload_buffer(::tidl::Payload &payload,
                                      uint32_t size, bool) {
   if (size > PAYLOAD_MAX_BYTES) {
     return ERR_NOT_ENOUGH_BUFFER;
   }
 
   uint8_t *buffer = new uint8_t[PAYLOAD_MAX_BYTES];
-  payload = ::trusty::aidl::Payload{buffer, size};
+  payload = ::tidl::Payload{buffer, size};
   return NO_ERROR;
 }
 
-void CastAuthImpl::free_payload_buffer(::trusty::aidl::Payload payload) {
+void CastAuthImpl::free_payload_buffer(::tidl::Payload payload) {
   delete[] payload.data();
   // Note that payload is passed by copy, so will be destroyed here, no
   // need to nullify the data member.
