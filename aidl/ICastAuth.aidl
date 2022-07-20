@@ -1,7 +1,7 @@
 interface ICastAuth {
-    const String PORT = "com.android.trusty.cast_auth";
+    const @utf8InCpp String PORT = "com.android.trusty.cast_auth";
 
-    @TrustyPayload(response=false) void ProvisionKey();
+    void ProvisionKey(in byte[] wrappedKey);
 
-    @TrustyPayload() void SignHash();
+    byte[] SignHash(in byte[] hash);
 }

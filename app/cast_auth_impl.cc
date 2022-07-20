@@ -1,13 +1,32 @@
+/*
+ * Copyright (C) 2022 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#define TLOG_TAG "cast-auth-trusty"
+
 #include "cast_auth_impl.h"
 
+#include <binder/RpcServerTrusty.h>
 #include <lib/storage/storage.h>
 #include <lib/system_state/system_state.h>
+#include <lk/err_ptr.h>
 #include <openssl/base.h>
 #include <openssl/bio.h>
 #include <openssl/err.h>
 #include <openssl/rsa.h>
 #include <openssl/x509.h>
-#define TLOG_TAG "cast-auth-trusty"
 #include <trusty_ipc.h>
 #include <trusty_log.h>
 #include <uapi/err.h>
@@ -20,10 +39,13 @@ const int UNWRAPPED_KEY_MAX_BYTES = 1200;
 const int WRAPPING_MAX_BYTES = 1024;
 const int WRAPPED_KEY_MAX_BYTES = UNWRAPPED_KEY_MAX_BYTES + WRAPPING_MAX_BYTES;
 const int PAYLOAD_MAX_BYTES = WRAPPED_KEY_MAX_BYTES;
+constexpr int BINDER_MAX_BYTES = 128;
+constexpr int MESSAGE_MAX_BYTES = PAYLOAD_MAX_BYTES + BINDER_MAX_BYTES;
 
-bool is_plaintext_rsa_2048_private_key(const ::tidl::Payload& req_payload) {
-    bssl::UniquePtr<BIO> bio(
-            BIO_new_mem_buf(req_payload.data(), req_payload.size()));
+using android::binder::Status;
+
+bool is_plaintext_rsa_2048_private_key(const std::vector<uint8_t>& key) {
+    bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(key.data(), key.size()));
     if (!bio) {
         TLOGE("is_plaintext_rsa_2048_private_key: failed to allocate memory for the "
               "device key\n");
@@ -51,83 +73,80 @@ private:
     int mError;
 };
 
-CastAuthImpl::CastAuthImpl() : BnCastAuth(PORT, &kAcl, PAYLOAD_MAX_BYTES) {}
-
-int CastAuthImpl::ProvisionKey(const ::tidl::Payload& req_payload) {
+Status CastAuthImpl::ProvisionKey(const std::vector<uint8_t>& wrappedKey) {
     uint8_t unwrapped[UNWRAPPED_KEY_MAX_BYTES];
     size_t unwrapped_size = sizeof(unwrapped);
     if (!system_state_provisioning_allowed()) {
         TLOGE("CastAuthImpl::ProvisionKey: provisioning not allowed\n");
-        return ERR_BAD_STATE;
+        return Status::fromServiceSpecificError(ERR_BAD_STATE);
     }
     int rc = NO_ERROR;
-    if (is_plaintext_rsa_2048_private_key(req_payload)) {
-        if (req_payload.size() > UNWRAPPED_KEY_MAX_BYTES)
+    if (is_plaintext_rsa_2048_private_key(wrappedKey)) {
+        if (wrappedKey.size() > UNWRAPPED_KEY_MAX_BYTES)
             rc = ERR_NOT_ENOUGH_BUFFER;
         else {
-            unwrapped_size = req_payload.size();
-            memcpy(unwrapped, req_payload.data(), unwrapped_size);
+            unwrapped_size = wrappedKey.size();
+            memcpy(unwrapped, wrappedKey.data(), unwrapped_size);
         }
     } else {
-        rc = keybox_unwrap(req_payload.data(), req_payload.size(), unwrapped,
+        rc = keybox_unwrap(wrappedKey.data(), wrappedKey.size(), unwrapped,
                            unwrapped_size, &unwrapped_size);
     }
     if (rc != NO_ERROR) {
         TLOGE("CastAuthImpl::ProvisionKey: failed to unwrap key: %d\n", rc);
-        return rc;
+        return Status::fromServiceSpecificError(rc);
     }
     bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(unwrapped, unwrapped_size));
     if (!bio) {
         TLOGE("CastAuthImpl::ProvisionKey: failed to allocate memory for the "
               "device key\n");
-        return ERR_NO_MEMORY;
+        return Status::fromServiceSpecificError(ERR_NO_MEMORY);
     }
     bssl::UniquePtr<RSA> rsa(d2i_RSAPrivateKey_bio(bio.get(), NULL));
     if (!rsa || RSA_size(rsa.get()) != RSA_2048_SIZE_BYTES) {
         TLOGE("CastAuthImpl::ProvisionKey: failed to decode device key\n");
-        return ERR_NOT_VALID;
+        return Status::fromServiceSpecificError(ERR_NOT_VALID);
     }
-    return SaveKey(unwrapped, unwrapped_size);
+    rc = SaveKey(unwrapped, unwrapped_size);
+    if (rc != NO_ERROR) {
+        return Status::fromServiceSpecificError(rc);
+    }
+    return Status::ok();
 }
 
-int CastAuthImpl::SignHash(const ::tidl::Payload& req_payload,
-                           ::tidl::Payload* resp_payload) {
+Status CastAuthImpl::SignHash(const std::vector<uint8_t>& hash,
+                              std::vector<uint8_t>* signature) {
     uint8_t key[UNWRAPPED_KEY_MAX_BYTES];
     size_t key_size = sizeof(key);
     int rc = LoadKey(key, &key_size);
     if (rc != NO_ERROR) {
         TLOGE("CastAuthImpl::SignHash: failed to load device key: %d\n", rc);
-        return rc;
+        return Status::fromServiceSpecificError(rc);
     }
     bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(key, key_size));
     if (!bio) {
         TLOGE("CastAuthImpl::SignHash: failed to allocate memory for the device "
               "key\n");
-        return ERR_NO_MEMORY;
+        return Status::fromServiceSpecificError(ERR_NO_MEMORY);
     }
     bssl::UniquePtr<RSA> rsa(d2i_RSAPrivateKey_bio(bio.get(), NULL));
     if (!rsa) {
         TLOGE("CastAuthImpl::SignHash: failed to decode device key\n");
-        return ERR_GENERIC;
+        return Status::fromServiceSpecificError(ERR_GENERIC);
     }
     if (!RSA_check_key(rsa.get())) {
         TLOGE("CastAuthImpl::SignHash: RSA key failed check\n");
-        return ERR_GENERIC;
+        return Status::fromServiceSpecificError(ERR_GENERIC);
     }
     size_t expected_size = (size_t)RSA_size(rsa.get());
-    if (resp_payload->size() < expected_size) {
-        TLOGE("CastAuthImpl::SignHash: response buffer too small\n");
-        return ERR_NOT_ENOUGH_BUFFER;
-    }
-    resp_payload->resize(expected_size);
-    rc = RSA_private_encrypt(req_payload.size(), req_payload.data(),
-                             resp_payload->data(), rsa.get(),
-                             RSA_PKCS1_PADDING);
+    signature->resize(expected_size);
+    rc = RSA_private_encrypt(hash.size(), hash.data(), signature->data(),
+                             rsa.get(), RSA_PKCS1_PADDING);
     if (rc != (int)expected_size) {
         TLOGE("CastAuthImpl::SignHash: RSA_private_encrypt %d \n", rc);
-        return ERR_GENERIC;
+        return Status::fromServiceSpecificError(ERR_GENERIC);
     }
-    return NO_ERROR;
+    return Status::ok();
 }
 
 int CastAuthImpl::SaveKey(const uint8_t* key, size_t length) {
@@ -208,20 +227,28 @@ int CastAuthImpl::LoadKey(uint8_t* key, size_t* length) {
     return NO_ERROR;
 }
 
-int CastAuthImpl::get_payload_buffer(::tidl::Payload& payload,
-                                     uint32_t size,
-                                     bool) {
-    if (size > PAYLOAD_MAX_BYTES) {
-        return ERR_NOT_ENOUGH_BUFFER;
+int CastAuthImpl::runService() {
+    tipc_hset* hset = tipc_hset_create();
+    if (IS_ERR(hset)) {
+        TLOGE("Failed to create handle set (%d)\n", PTR_ERR(hset));
+        return EXIT_FAILURE;
     }
 
-    uint8_t* buffer = new uint8_t[PAYLOAD_MAX_BYTES];
-    payload = ::tidl::Payload{buffer, size};
-    return NO_ERROR;
-}
+    const auto port_acl = android::RpcServerTrusty::PortAcl{
+            .flags = IPC_PORT_ALLOW_TA_CONNECT | IPC_PORT_ALLOW_NS_CONNECT,
+    };
 
-void CastAuthImpl::free_payload_buffer(::tidl::Payload payload) {
-    delete[] payload.data();
-    // Note that payload is passed by copy, so will be destroyed here, no
-    // need to nullify the data member.
+    auto srv = android::RpcServerTrusty::make(
+            hset, ICastAuth::PORT().c_str(),
+            std::shared_ptr<const android::RpcServerTrusty::PortAcl>(&port_acl),
+            MESSAGE_MAX_BYTES);
+    if (!srv.ok()) {
+        TLOGE("Failed to create RpcServer (%d)\n", srv.error());
+        return EXIT_FAILURE;
+    }
+
+    android::sp<CastAuthImpl> cast_auth = android::sp<CastAuthImpl>::make();
+    (*srv)->setRootObject(cast_auth);
+
+    return tipc_run_event_loop(hset);
 }

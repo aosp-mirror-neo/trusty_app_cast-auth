@@ -22,8 +22,9 @@ MODULE_LIBRARY_DEPS += \
 	trusty/user/base/lib/system_state \
 	trusty/user/base/experimental/lib/tidl \
 	trusty/user/base/lib/keybox/client \
+	frameworks/native/libs/binder/trusty \
 
 MODULE_LIBRARY_DEPS += \
-	trusty/user/app/cast-auth/aidl/Bn \
+	trusty/user/app/cast-auth/aidl \
 
 include make/trusted_app.mk

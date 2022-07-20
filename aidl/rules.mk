@@ -11,38 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
 
 LOCAL_DIR := $(GET_LOCAL_DIR)
 
 MODULE := $(LOCAL_DIR)
 
-
-
-IFACE_USE_PREBUILTS := 1
-
-ifeq ($(IFACE_USE_PREBUILTS),1)
-
-
-MODULE_SRCS := \
-	$(LOCAL_DIR)/../generated/ICastAuth.cpp \
-	$(LOCAL_DIR)/../generated/ICastAuth_CBp.cpp \
-
-MODULE_LIBRARY_EXPORTED_DEPS += \
-	trusty/user/base/experimental/lib/tidl \
-
-MODULE_EXPORT_INCLUDES += \
-	$(LOCAL_DIR)/../generated/include
-
-include make/library.mk
-
-else
-
-AIDL_CWRAPPER_DOMAIN := trusty_user
-
 MODULE_AIDLS := \
-	$(LOCAL_DIR)/../ICastAuth.aidl \
-
-AIDL_CWRAPPER_BN := $(findstring Bn, $(shell basename $(LOCAL_DIR)))
+	$(LOCAL_DIR)/ICastAuth.aidl \
 
 include make/aidl.mk
-endif

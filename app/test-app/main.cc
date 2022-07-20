@@ -1,3 +1,21 @@
+/*
+ * Copyright (C) 2022 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#define TLOG_TAG "cast-auth-trusty-test"
+
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,14 +24,13 @@
 #include <array>
 #include <cstdint>
 
-#include <trusty_ipc.h>
-#include <uapi/err.h>
-
-#define TLOG_TAG "cast-auth-trusty-test"
-#include <trusty_log.h>
-
+#include <binder/RpcSession.h>
+#include <binder/RpcTransportTipcTrusty.h>
 #include <lib/unittest/unittest.h>
+#include <trusty_ipc.h>
+#include <trusty_log.h>
 #include <trusty_unittest.h>
+#include <uapi/err.h>
 
 #include "BpCastAuth.h"
 
@@ -30,7 +47,7 @@ unsigned int message_bin_len = 8;
  * bytes: 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x0a
  * prefixed by the appropriate DER prefix for SHA256.
  */
-unsigned char test_hash[] = {
+const std::vector<uint8_t> test_hash{
         0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65,
         0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20, 0x00, 0xcf, 0x20,
         0xe0, 0x7a, 0xa9, 0x69, 0x9f, 0x6c, 0x4f, 0x93, 0x42, 0x30, 0xee,
@@ -40,7 +57,7 @@ unsigned char test_hash[] = {
 /* The following is a test RSA 2048 bit key, generated using openssl genrsa. It
  * is in PKCS1 RSAPrivateKey (DER) format.
  */
-unsigned char test_pkcs1_der[] = {
+const std::vector<uint8_t> test_pkcs1_der{
         0x30, 0x82, 0x04, 0xa4, 0x02, 0x01, 0x00, 0x02, 0x82, 0x01, 0x01, 0x00,
         0xca, 0xc1, 0x47, 0xf3, 0x2f, 0xf9, 0xd8, 0x47, 0x7f, 0x3b, 0x14, 0xb7,
         0xde, 0x0f, 0xa8, 0x41, 0xe6, 0x30, 0x01, 0x27, 0x1b, 0x8a, 0x30, 0x96,
@@ -206,58 +223,81 @@ void keybox_wrap_for_test(const uint8_t* keybox_plaintext,
     wrapped_keybox[keybox_plaintext_len] = checksum;
 }
 
-TEST(CastAuthTest, ProvisionAndSignHash) {
-    int rc;
-    BpCastAuth cast_auth;
-    rc = cast_auth.connect(ICastAuth::PORT, IPC_CONNECT_WAIT_FOR_PORT);
-    ASSERT_EQ(NO_ERROR, rc, "connect");
+typedef struct {
+    android::sp<android::RpcSession> sess;
+    android::sp<ICastAuth> srv;
+} CastAuthTest_t;
 
-    uint8_t wrapped_keybox[sizeof(test_pkcs1_der) + 1];
+static void CastAuthTest_SetUp(CastAuthTest_t* state) {
+    int rc;
+    android::base::unique_fd chan;
+    android::status_t status;
+    android::sp<android::IBinder> root;
+
+    rc = connect(ICastAuth::PORT().c_str(), IPC_CONNECT_WAIT_FOR_PORT);
+    ASSERT_GE(rc, 0);
+    chan.reset(rc);
+
+    state->sess = android::RpcSession::make(
+            android::RpcTransportCtxFactoryTipcTrusty::make());
+    ASSERT_NE(nullptr, state->sess.get());
+
+    status = state->sess->setupPreconnectedClient(
+            std::move(chan), []() { return android::base::unique_fd(); });
+    ASSERT_EQ(android::OK, status);
+
+    root = state->sess->getRootObject();
+    ASSERT_NE(nullptr, root.get());
+
+    state->srv = ICastAuth::asInterface(root);
+    ASSERT_NE(nullptr, state->srv.get());
+
+test_abort:;
+}
+
+static void CastAuthTest_TearDown(CastAuthTest_t* state) {
+    state->srv.clear();
+}
+
+TEST_F(CastAuthTest, ProvisionAndSignHash) {
+    std::vector<uint8_t> wrapped_keybox(test_pkcs1_der.size() + 1);
     size_t wrapped_keybox_len;
-    keybox_wrap_for_test(test_pkcs1_der, sizeof(test_pkcs1_der), wrapped_keybox,
-                         sizeof(wrapped_keybox), &wrapped_keybox_len);
+    keybox_wrap_for_test(test_pkcs1_der.data(), test_pkcs1_der.size(),
+                         wrapped_keybox.data(), wrapped_keybox.size(),
+                         &wrapped_keybox_len);
+    wrapped_keybox.resize(wrapped_keybox_len);
+
     {
-        ::tidl::Payload prov_req(wrapped_keybox, wrapped_keybox_len);
-        rc = cast_auth.ProvisionKey(prov_req);
-        ASSERT_EQ(NO_ERROR, rc, "ProvisionKey");
+        auto status = _state->srv->ProvisionKey(wrapped_keybox);
+        ASSERT_TRUE(status.isOk(), "ProvisionKey");
     }
 
     {
-        ::tidl::Payload sign_req(test_hash, sizeof(test_hash));
-        uint8_t signature[256];
-        ::tidl::Payload sign_resp(signature, sizeof(signature));
-        rc = cast_auth.SignHash(sign_req, &sign_resp);
-        ASSERT_EQ(NO_ERROR, rc, "SignHash");
-        ASSERT_EQ(sign_resp.size(), sizeof(test_signature), "signature size");
-        for (unsigned int i = 0; i < sign_resp.size(); ++i) {
-            EXPECT_EQ(sign_resp.data()[i], test_signature[i], "signature diff");
+        std::vector<uint8_t> signature(256);
+        auto status = _state->srv->SignHash(test_hash, &signature);
+        ASSERT_TRUE(status.isOk(), "SignHash");
+        ASSERT_EQ(signature.size(), sizeof(test_signature), "signature size");
+        for (unsigned int i = 0; i < signature.size(); ++i) {
+            EXPECT_EQ(signature[i], test_signature[i], "signature diff");
         }
     }
 
 test_abort:;
 }
 
-TEST(CastAuthTest, ProvisionUnwrappedAndSignHash) {
-    int rc;
-    BpCastAuth cast_auth;
-    rc = cast_auth.connect(ICastAuth::PORT, IPC_CONNECT_WAIT_FOR_PORT);
-    ASSERT_EQ(NO_ERROR, rc, "connect");
-
+TEST_F(CastAuthTest, ProvisionUnwrappedAndSignHash) {
     {
-        ::tidl::Payload prov_req(test_pkcs1_der, sizeof(test_pkcs1_der));
-        rc = cast_auth.ProvisionKey(prov_req);
-        ASSERT_EQ(NO_ERROR, rc, "ProvisionKey");
+        auto status = _state->srv->ProvisionKey(test_pkcs1_der);
+        ASSERT_TRUE(status.isOk(), "ProvisionKey");
     }
 
     {
-        ::tidl::Payload sign_req(test_hash, sizeof(test_hash));
-        uint8_t signature[256];
-        ::tidl::Payload sign_resp(signature, sizeof(signature));
-        rc = cast_auth.SignHash(sign_req, &sign_resp);
-        ASSERT_EQ(NO_ERROR, rc, "SignHash");
-        ASSERT_EQ(sign_resp.size(), sizeof(test_signature), "signature size");
-        for (unsigned int i = 0; i < sign_resp.size(); ++i) {
-            EXPECT_EQ(sign_resp.data()[i], test_signature[i], "signature diff");
+        std::vector<uint8_t> signature(256);
+        auto status = _state->srv->SignHash(test_hash, &signature);
+        ASSERT_TRUE(status.isOk(), "SignHash");
+        ASSERT_EQ(signature.size(), sizeof(test_signature), "signature size");
+        for (unsigned int i = 0; i < signature.size(); ++i) {
+            EXPECT_EQ(signature[i], test_signature[i], "signature diff");
         }
     }
 
