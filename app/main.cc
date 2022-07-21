@@ -8,6 +8,6 @@
 #include "cast_auth_impl.h"
 
 int main() {
-  CastAuthImpl impl;
-  return impl.run_service();
+    CastAuthImpl impl;
+    return impl.run_service();
 }
