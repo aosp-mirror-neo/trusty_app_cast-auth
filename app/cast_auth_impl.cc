@@ -240,7 +240,7 @@ int CastAuthImpl::runService() {
 
     auto srv = android::RpcServerTrusty::make(
             hset, ICastAuth::PORT().c_str(),
-            std::shared_ptr<const android::RpcServerTrusty::PortAcl>(&port_acl),
+            std::make_shared<const android::RpcServerTrusty::PortAcl>(port_acl),
             MESSAGE_MAX_BYTES);
     if (!srv.ok()) {
         TLOGE("Failed to create RpcServer (%d)\n", srv.error());
