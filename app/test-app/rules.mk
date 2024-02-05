@@ -23,4 +23,8 @@ MODULE_LIBRARY_DEPS += \
 MODULE_LIBRARY_DEPS += \
 	trusty/user/app/cast-auth/aidl \
 
+ifeq (true,$(call TOBOOL,$(WITH_FAKE_KEYBOX)))
+MODULE_DEFINES += WITH_FAKE_KEYBOX
+endif
+
 include make/trusted_app.mk
