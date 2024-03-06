@@ -242,13 +242,12 @@ int CastAuthImpl::runService() {
             hset, ICastAuth::PORT().c_str(),
             std::make_shared<const android::RpcServerTrusty::PortAcl>(port_acl),
             MESSAGE_MAX_BYTES);
-    if (!srv.ok()) {
-        TLOGE("Failed to create RpcServer (%d)\n", srv.error());
+    if (srv == nullptr) {
         return EXIT_FAILURE;
     }
 
     android::sp<CastAuthImpl> cast_auth = android::sp<CastAuthImpl>::make();
-    (*srv)->setRootObject(cast_auth);
+    srv->setRootObject(cast_auth);
 
     return tipc_run_event_loop(hset);
 }
