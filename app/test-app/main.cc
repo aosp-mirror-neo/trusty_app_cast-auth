@@ -189,8 +189,8 @@ unsigned char test_signature[] = {
         0x7b, 0xde, 0x9e, 0xb2};
 
 /* The following function is solely for the purpose of testing. It "wraps" a key
- * such that it can be unwrapped by the sample keybox implementation in Trusty
- * As warned therein:
+ * such that it can be unwrapped by the sample keybox implementation in Trusty,
+ * used when WITH_FAKE_KEYBOX is set. As warned therein:
  *
  * THIS DOES NOT PROVIDE ANY SECURITY
  *
@@ -230,7 +230,7 @@ typedef struct {
 
 static void CastAuthTest_SetUp(CastAuthTest_t* state) {
     int rc;
-    android::base::unique_fd chan;
+    android::binder::unique_fd chan;
     android::status_t status;
     android::sp<android::IBinder> root;
 
@@ -243,7 +243,7 @@ static void CastAuthTest_SetUp(CastAuthTest_t* state) {
     ASSERT_NE(nullptr, state->sess.get());
 
     status = state->sess->setupPreconnectedClient(
-            std::move(chan), []() { return android::base::unique_fd(); });
+            std::move(chan), []() { return android::binder::unique_fd(); });
     ASSERT_EQ(android::OK, status);
 
     root = state->sess->getRootObject();
@@ -259,7 +259,13 @@ static void CastAuthTest_TearDown(CastAuthTest_t* state) {
     state->srv.clear();
 }
 
-TEST_F(CastAuthTest, ProvisionAndSignHash) {
+#if defined(WITH_FAKE_KEYBOX)
+#define FAKE_KEYBOX_ONLY_TEST(name) name
+#else
+#define FAKE_KEYBOX_ONLY_TEST(name) DISABLED_##name
+#endif
+
+TEST_F(CastAuthTest, FAKE_KEYBOX_ONLY_TEST(ProvisionAndSignHash)) {
     std::vector<uint8_t> wrapped_keybox(test_pkcs1_der.size() + 1);
     size_t wrapped_keybox_len;
     keybox_wrap_for_test(test_pkcs1_der.data(), test_pkcs1_der.size(),
