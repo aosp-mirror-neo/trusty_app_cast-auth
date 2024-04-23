@@ -45,13 +45,10 @@ constexpr int MESSAGE_MAX_BYTES = PAYLOAD_MAX_BYTES + BINDER_MAX_BYTES;
 using android::binder::Status;
 
 bool is_plaintext_rsa_2048_private_key(const std::vector<uint8_t>& key) {
-    bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(key.data(), key.size()));
-    if (!bio) {
-        TLOGE("is_plaintext_rsa_2048_private_key: failed to allocate memory for the "
-              "device key\n");
-        return ERR_NO_MEMORY;
-    }
-    bssl::UniquePtr<RSA> rsa(d2i_RSAPrivateKey_bio(bio.get(), NULL));
+    const uint8_t* key_data = key.data();
+
+    bssl::UniquePtr<RSA> rsa(d2i_RSAPrivateKey(NULL, &key_data, key.size()));
+
     return rsa && RSA_size(rsa.get()) == RSA_2048_SIZE_BYTES;
 }
 

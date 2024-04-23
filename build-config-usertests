@@ -23,5 +23,6 @@
             porttest("com.android.trusty.cast_auth.test"),
         ],
         storage_full=True,
+        tablet=True,
     ),
 ]
