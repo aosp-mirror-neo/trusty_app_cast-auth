@@ -19,6 +19,7 @@
 #include "cast_auth_impl.h"
 
 #include <binder/RpcServerTrusty.h>
+#include <lib/keybox/client/keybox.h>
 #include <lib/storage/storage.h>
 #include <lib/system_state/system_state.h>
 #include <lk/err_ptr.h>
@@ -30,8 +31,6 @@
 #include <trusty_ipc.h>
 #include <trusty_log.h>
 #include <uapi/err.h>
-
-#include "lib/keybox/client/keybox.h"
 
 static const char* kKeyPath = "cast_auth_key";
 const int RSA_2048_SIZE_BYTES = 256;
