@@ -19,6 +19,7 @@
 #include "cast_auth_impl.h"
 
 #include <binder/RpcServerTrusty.h>
+#include <lib/keybox/client/keybox.h>
 #include <lib/storage/storage.h>
 #include <lib/system_state/system_state.h>
 #include <lk/err_ptr.h>
@@ -30,8 +31,6 @@
 #include <trusty_ipc.h>
 #include <trusty_log.h>
 #include <uapi/err.h>
-
-#include "lib/keybox/client/keybox.h"
 
 static const char* kKeyPath = "cast_auth_key";
 const int RSA_2048_SIZE_BYTES = 256;
@@ -45,13 +44,10 @@ constexpr int MESSAGE_MAX_BYTES = PAYLOAD_MAX_BYTES + BINDER_MAX_BYTES;
 using android::binder::Status;
 
 bool is_plaintext_rsa_2048_private_key(const std::vector<uint8_t>& key) {
-    bssl::UniquePtr<BIO> bio(BIO_new_mem_buf(key.data(), key.size()));
-    if (!bio) {
-        TLOGE("is_plaintext_rsa_2048_private_key: failed to allocate memory for the "
-              "device key\n");
-        return ERR_NO_MEMORY;
-    }
-    bssl::UniquePtr<RSA> rsa(d2i_RSAPrivateKey_bio(bio.get(), NULL));
+    const uint8_t* key_data = key.data();
+
+    bssl::UniquePtr<RSA> rsa(d2i_RSAPrivateKey(NULL, &key_data, key.size()));
+
     return rsa && RSA_size(rsa.get()) == RSA_2048_SIZE_BYTES;
 }
 
