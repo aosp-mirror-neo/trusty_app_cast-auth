@@ -1,0 +1,11 @@
+{
+    "header": "cast_auth_consts.h",
+    "constants": [
+        {
+            "name": "CAST_AUTH_BINDER_TIPC_QUEUE_LEN",
+            "value": "6",
+            "type": "int",
+            "unsigned": true
+        }
+    ]
+}
