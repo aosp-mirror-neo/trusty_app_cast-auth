@@ -19,6 +19,7 @@
 #include "cast_auth_impl.h"
 
 #include <binder/RpcServerTrusty.h>
+#include <cast_auth_consts.h>
 #include <lib/keybox/client/keybox.h>
 #include <lib/storage/storage.h>
 #include <lib/system_state/system_state.h>
@@ -237,7 +238,7 @@ int CastAuthImpl::runService() {
     auto srv = android::RpcServerTrusty::make(
             hset, ICastAuth::PORT().c_str(),
             std::make_shared<const android::RpcServerTrusty::PortAcl>(port_acl),
-            MESSAGE_MAX_BYTES);
+            MESSAGE_MAX_BYTES, CAST_AUTH_BINDER_TIPC_QUEUE_LEN);
     if (srv == nullptr) {
         return EXIT_FAILURE;
     }

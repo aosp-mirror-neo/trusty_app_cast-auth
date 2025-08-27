@@ -5,6 +5,8 @@ TRUSTY_APP_NAME := cast_auth
 
 MODULE := $(LOCAL_DIR)
 
+MODULE_CONSTANTS := $(LOCAL_DIR)/cast_auth_consts.json
+
 MODULE_INCLUDES += \
 	$(COMMON_DIR) \
 
